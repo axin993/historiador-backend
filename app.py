@@ -5,6 +5,7 @@ from flask_cors import CORS
 
 # Load API keys from environment variables
 openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.base_url = "https://api.openai.com/v1"
 
 app = Flask(__name__)
 CORS(app)  # Allow frontend access
