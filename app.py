@@ -1,63 +1,56 @@
 import os
+import time
 from flask import Flask, request, jsonify
 import openai
 from flask_cors import CORS
-import time
 
-# Initialize OpenAI client with v2 API
+# Initialize OpenAI client
 client = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url="https://api.openai.com/v1"
 )
 
+# Load Assistant ID from env
 ASSISTANT_ID = os.getenv("ASSISTANT_ID")
 
+# Setup Flask app and CORS
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Route to create a new thread
-@app.route("/start", methods=["POST"])
-def start():
-    try:
-        thread = client.beta.threads.create()
-        return jsonify({"thread_id": thread.id})
-    except Exception as e:
-        print("⚠️ Error creating thread:", str(e))
-        return jsonify({"error": "Failed to create thread."}), 500
-
-# Route to send message inside existing thread
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json
     user_message = data.get("message", "")
-    thread_id = data.get("thread_id", "")
 
     try:
-        # Add user message to existing thread
+        # 1️⃣ Create thread
+        thread = client.beta.threads.create()
+
+        # 2️⃣ Add user message BEFORE creating run
         client.beta.threads.messages.create(
-            thread_id=thread_id,
+            thread_id=thread.id,
             role="user",
             content=user_message
         )
 
-        # Create a run
+        # 3️⃣ Now create run AFTER message exists
         run = client.beta.threads.runs.create(
-            thread_id=thread_id,
+            thread_id=thread.id,
             assistant_id=ASSISTANT_ID
         )
 
-        # Poll for run completion
+        # 4️⃣ Poll run status
         while True:
             run_status = client.beta.threads.runs.retrieve(
-                thread_id=thread_id,
+                thread_id=thread.id,
                 run_id=run.id
             )
             if run_status.status == "completed":
                 break
             time.sleep(0.5)
 
-        # Get assistant reply
-        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        # 5️⃣ Retrieve assistant reply
+        messages = client.beta.threads.messages.list(thread_id=thread.id)
         assistant_reply = messages.data[0].content[0].text.value
 
         return jsonify({"reply": assistant_reply})
