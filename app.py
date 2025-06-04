@@ -3,9 +3,11 @@ from flask import Flask, request, jsonify
 import openai
 from flask_cors import CORS
 
-# Load API keys from environment variables
-openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.base_url = "https://api.openai.com/v1"
+# Initialize OpenAI client properly with v2
+client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url="https://api.openai.com/v1"  # still safe to explicitly set
+)
 
 # Load Assistant ID
 ASSISTANT_ID = os.getenv("ASSISTANT_ID")
@@ -21,17 +23,33 @@ def chat():
 
     try:
         # Create thread
-        thread = openai.beta.threads.create()
+        thread = client.beta.threads.create()
 
-        # Run assistant
-        run = openai.beta.threads.runs.create_and_poll(
+        # Create a run
+        run = client.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=ASSISTANT_ID,
-            messages=[{"role": "user", "content": user_message}]
+            instructions="Eres un historiador experto."
         )
 
-        # Get response
-        messages = openai.beta.threads.messages.list(thread_id=thread.id)
+        # Poll until run completes
+        while True:
+            run_status = client.beta.threads.runs.retrieve(
+                thread_id=thread.id,
+                run_id=run.id
+            )
+            if run_status.status == "completed":
+                break
+
+        # Add the message
+        client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=user_message
+        )
+
+        # Fetch messages after completion
+        messages = client.beta.threads.messages.list(thread_id=thread.id)
         assistant_reply = messages.data[0].content[0].text.value
 
         return jsonify({"reply": assistant_reply})
